@@ -1,7 +1,7 @@
 # Example --query-tools file.
 #
-#   sqlserver-mcp --conn-string=... --tool-prefix=sales \
-#     --query-tools=/etc/sqlserver-mcp/sales-tools.yaml
+#   mssql-mcp-toolkit --conn-string=... --tool-prefix=sales \
+#     --query-tools=/etc/mssql-mcp-toolkit/sales-tools.yaml
 #
 # A YAML list; each entry is one extra MCP tool, a named parameterized query
 # the model calls by supplying parameter values. Because it is YAML, the SQL

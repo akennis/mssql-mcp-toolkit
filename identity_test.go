@@ -143,7 +143,7 @@ func TestInitializeCarriesInstructionsAndAServerLabel(t *testing.T) {
 		t.Errorf("instructions = %q, want them to name the query tool", init.Instructions)
 	}
 	// N registrations of one binary must not show one name N times.
-	if init.ServerInfo.Name != "sqlserver-mcp-sales" {
+	if init.ServerInfo.Name != "mssql-mcp-toolkit-sales" {
 		t.Errorf("server name = %q, want it derived from the prefix", init.ServerInfo.Name)
 	}
 }

@@ -1,4 +1,4 @@
-# Continue.dev configuration for the SQL Server MCP server.
+# Continue.dev configuration for the mssql-mcp-toolkit MCP server.
 #
 # Put this at ~/.continue/config.yaml (global) or <repo>/.continue/config.yaml
 # (workspace only). Continue picks the change up on save; if it does not,
@@ -32,9 +32,9 @@ models:
 mcpServers:
   - name: AdventureWorks (sales)
     type: stdio
-    # Absolute path to the binary built by `go build -o sqlserver-mcp .`
-    # On Windows use a full path with .exe, e.g. C:\tools\sqlserver-mcp.exe
-    command: /usr/local/bin/sqlserver-mcp
+    # Absolute path to the binary built by `go build -o mssql-mcp-toolkit .`
+    # On Windows use a full path with .exe, e.g. C:\tools\mssql-mcp-toolkit.exe
+    command: /usr/local/bin/mssql-mcp-toolkit
     args:
       - --read-only # drop this line to allow writes
       # Every result is read into the model's context window, so it is capped
@@ -48,7 +48,7 @@ mcpServers:
       # with its own output format (csv, md, or scalar). YAML so the SQL can be
       # pasted in as a `|` block scalar. See the "Custom query tools" section of
       # the README, and query-tools.example.yaml in the repo.
-      # - --query-tools=/etc/sqlserver-mcp/sales-tools.yaml
+      # - --query-tools=/etc/mssql-mcp-toolkit/sales-tools.yaml
       # Add --query-tools-only to drop the built-in sales_query and metadata
       # tools and expose ONLY the tools from the file above. Needs --query-tools,
       # and makes --tool-prefix below optional (nothing is left for it to name).
@@ -81,7 +81,7 @@ mcpServers:
   # A second database is a second block, not a second argument to the first.
   - name: HR warehouse
     type: stdio
-    command: /usr/local/bin/sqlserver-mcp
+    command: /usr/local/bin/mssql-mcp-toolkit
     args:
       - --read-only
       - --query-timeout=30s

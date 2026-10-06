@@ -1,4 +1,4 @@
-// Command sqlserver-mcp is a Model Context Protocol server that exposes a
+// Command mssql-mcp-toolkit is a Model Context Protocol server that exposes a
 // single tool for running a T-SQL query against Microsoft SQL Server and
 // returning its result set.
 //
@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	serverName    = "sqlserver-mcp"
+	serverName    = "mssql-mcp-toolkit"
 	serverVersion = "0.1.0"
 )
 

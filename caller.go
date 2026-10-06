@@ -60,7 +60,7 @@ func requireBearer(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		got := []byte(strings.TrimSpace(req.Header.Get("Authorization")))
 		if subtle.ConstantTimeCompare(got, want) != 1 {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="sqlserver-mcp"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mssql-mcp-toolkit"`)
 			http.Error(w, "missing or wrong bearer token", http.StatusUnauthorized)
 			return
 		}
