@@ -1,0 +1,211 @@
+# Example --query-tools file.
+#
+#   sqlserver-mcp --conn-string=... --tool-prefix=sales \
+#     --query-tools=/etc/sqlserver-mcp/sales-tools.yaml
+#
+# A YAML list; each entry is one extra MCP tool, a named parameterized query
+# the model calls by supplying parameter values. Because it is YAML, the SQL
+# goes in as a `|` block scalar - paste a tested statement in as-is, no
+# escaping and no collapsing onto one line. `@name` tokens in the query are
+# bound parameters, declared under `parameters`.
+#
+# This file is exercised by the test suite, so it stays loadable and keeps
+# demonstrating every feature: all three output formats, typed and optional
+# parameters, resultColumn, columns, pickRecord, requireAnyOf, and a per-tool
+# connectionString.
+#
+# This is the bare-list form. To put the tools on separate ports under
+# --transport=http, use the mapping form instead - a `groups:` block and a
+# `tools:` list, each tool naming a `group:`. See the "Tool groups" section of
+# the README for the groups: and include: forms.
+
+- name: product_categories
+  description: >-
+    Every product category and how many products it holds. Takes no arguments.
+    Returned as CSV.
+  query: |
+    SELECT c.Name AS Category, COUNT(p.ProductID) AS Products
+    FROM Production.ProductCategory AS c
+    LEFT JOIN Production.ProductSubcategory AS s
+      ON s.ProductCategoryID = c.ProductCategoryID
+    LEFT JOIN Production.Product AS p
+      ON p.ProductSubcategoryID = s.ProductSubcategoryID
+    GROUP BY c.Name
+    ORDER BY Products DESC
+  outputFormat: csv
+
+- name: orders_for_customer
+  description: >-
+    Orders for one customer, optionally only those on or after a date and
+    optionally only the online ones. Newest first, returned as CSV.
+  query: |
+    SELECT soh.SalesOrderID, soh.OrderDate, soh.OnlineOrderFlag, soh.TotalDue
+    FROM Sales.SalesOrderHeader AS soh
+    WHERE soh.CustomerID = @customer
+      AND (@since IS NULL OR soh.OrderDate >= @since)
+      AND (@online_only = 0 OR soh.OnlineOrderFlag = 1)
+    ORDER BY soh.OrderDate DESC
+  parameters:
+    - name: customer
+      type: int
+      description: CustomerID to list orders for
+    - name: since
+      type: string
+      required: false
+      description: ISO 8601 date; when given, only orders on or after it
+    - name: online_only
+      type: bool
+      required: false
+      description: "when true, only online orders (default: all orders)"
+  outputFormat: csv
+
+- name: order_header
+  description: >-
+    One sales order's header. The query selects the whole row; columns trims it
+    to the fields worth returning, in this order.
+  query: |
+    SELECT * FROM Sales.SalesOrderHeader WHERE SalesOrderID = @order
+  parameters:
+    - name: order
+      type: int
+      description: SalesOrderID
+  columns: [SalesOrderID, OrderDate, Status, TotalDue]
+  outputFormat: csv
+
+- name: resolve_customer
+  description: >-
+    Find one customer by (partial) name and return a compact reference for it.
+    When the name matches several people the server shows every match with
+    every column for review, then returns only the chosen record's CustomerID
+    and AccountNumber - so the client's context holds one small row, not the
+    whole candidate list.
+  query: |
+    SELECT c.CustomerID, c.AccountNumber, p.FirstName, p.LastName,
+           s.Name AS Store, c.ModifiedDate
+    FROM Sales.Customer AS c
+    LEFT JOIN Person.Person AS p ON p.BusinessEntityID = c.PersonID
+    LEFT JOIN Sales.Store AS s ON s.BusinessEntityID = c.StoreID
+    WHERE p.LastName LIKE @last_name + '%'
+    ORDER BY p.LastName, p.FirstName
+  parameters:
+    - name: last_name
+      type: string
+      description: last name or its leading characters
+  columns: [CustomerID, AccountNumber]
+  pickRecord: true
+  outputFormat: csv
+
+- name: find_customer
+  description: >-
+    Customers by (partial) last name and/or first name - at least one of
+    last_name or first_name must be given. Returns the matching list, unless
+    the caller sets RequireSingle - then several matches are put to the person
+    to choose from and only the chosen customer comes back.
+  query: |
+    SELECT TOP (@limit) c.CustomerID, c.AccountNumber, p.FirstName, p.LastName,
+           s.Name AS Store
+    FROM Sales.Customer AS c
+    LEFT JOIN Person.Person AS p ON p.BusinessEntityID = c.PersonID
+    LEFT JOIN Sales.Store AS s ON s.BusinessEntityID = c.StoreID
+    WHERE (@last_name IS NULL OR p.LastName LIKE @last_name + '%')
+      AND (@first_name IS NULL OR p.FirstName LIKE @first_name + '%')
+    ORDER BY p.LastName, p.FirstName
+  parameters:
+    - name: last_name
+      type: string
+      required: false
+      description: last name or its leading characters
+    - name: first_name
+      type: string
+      required: false
+      description: first name or its leading characters
+    - name: limit
+      type: int
+      description: at most this many rows
+  columns: [CustomerID, AccountNumber, FirstName, LastName]
+  pickRecord: optional
+  # Both name filters are optional so they can be combined, but a call with
+  # neither would list every customer; requireAnyOf rejects it up front.
+  requireAnyOf: [last_name, first_name]
+  outputFormat: csv
+
+- name: top_products_by_revenue
+  description: >-
+    The highest-revenue products in a date range, as a markdown table the model
+    can read inline.
+  query: |
+    SELECT TOP (@limit) p.Name AS Product,
+           SUM(sod.LineTotal) AS Revenue,
+           SUM(sod.OrderQty) AS UnitsSold
+    FROM Sales.SalesOrderDetail AS sod
+    JOIN Sales.SalesOrderHeader AS soh ON soh.SalesOrderID = sod.SalesOrderID
+    JOIN Production.Product AS p ON p.ProductID = sod.ProductID
+    WHERE soh.OrderDate >= @from AND soh.OrderDate < @to
+    GROUP BY p.Name
+    ORDER BY Revenue DESC
+  parameters:
+    - name: limit
+      type: int
+      description: how many products to return
+    - name: from
+      type: string
+      description: ISO 8601 date, inclusive lower bound on OrderDate
+    - name: to
+      type: string
+      description: ISO 8601 date, exclusive upper bound on OrderDate
+  outputFormat: md
+
+- name: customer_count
+  description: >-
+    How many customers exist. A single number: the query returns one column and
+    one row, so the value is returned directly.
+  query: |
+    SELECT COUNT(*) FROM Sales.Customer
+  outputFormat: scalar
+
+- name: product_list_price
+  description: >-
+    The list price of one product by its ProductID. The query returns several
+    columns, so resultColumn names which one is the value.
+  query: |
+    SELECT ProductID, Name, ListPrice, StandardCost
+    FROM Production.Product
+    WHERE ProductID = @product
+  parameters:
+    - name: product
+      type: int
+      description: ProductID to price
+  outputFormat: scalar
+  resultColumn: ListPrice
+
+- name: employee_id_by_name
+  description: >-
+    The BusinessEntityID of an employee, looked up by last name. If the name
+    matches more than one employee the server shows all of them and asks which
+    record to use (MCP elicitation); narrow the name to avoid the prompt.
+  query: |
+    SELECT p.BusinessEntityID, p.FirstName, p.LastName, e.JobTitle
+    FROM Person.Person AS p
+    JOIN HumanResources.Employee AS e ON e.BusinessEntityID = p.BusinessEntityID
+    WHERE p.LastName = @last_name
+    ORDER BY p.FirstName
+  parameters:
+    - name: last_name
+      type: string
+      description: exact last name to look up
+  outputFormat: scalar
+  resultColumn: BusinessEntityID
+
+- name: hr_headcount_by_department
+  description: >-
+    Current headcount per department. Runs against a different database than
+    this server's --conn-string, named by connectionString on this record.
+  query: |
+    SELECT d.Name AS Department, COUNT(*) AS Headcount
+    FROM HumanResources.EmployeeDepartmentHistory AS edh
+    JOIN HumanResources.Department AS d ON d.DepartmentID = edh.DepartmentID
+    WHERE edh.EndDate IS NULL
+    GROUP BY d.Name
+    ORDER BY Headcount DESC
+  connectionString: sqlserver://reporting_user:CHANGE_ME@sqlhost:1433?database=HRWarehouse&encrypt=true&TrustServerCertificate=true
+  outputFormat: csv

@@ -1,0 +1,94 @@
+# Continue.dev configuration for the SQL Server MCP server.
+#
+# Put this at ~/.continue/config.yaml (global) or <repo>/.continue/config.yaml
+# (workspace only). Continue picks the change up on save; if it does not,
+# reload the VS Code window.
+#
+# Replace the `command` path and the connection strings below.
+#
+# One process serves one database, so two databases are two blocks running the
+# same binary. They differ only in --tool-prefix and --conn-string — and the
+# prefix is what keeps their tool names apart, so a client cannot let one
+# server shadow the other and route your queries to the wrong database.
+#
+# Everything is passed as an argument. This server reads no environment
+# variables, so an `env:` block here would be silently ignored.
+
+name: sql-server-assistant
+version: 0.0.1
+schema: v1
+
+models:
+  # Your usual model config — shown here only so the file is complete.
+  # Delete this block if you already have models configured elsewhere.
+  - name: Claude Opus 5
+    provider: anthropic
+    model: claude-opus-5
+    apiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+    roles:
+      - chat
+      - edit
+
+mcpServers:
+  - name: AdventureWorks (sales)
+    type: stdio
+    # Absolute path to the binary built by `go build -o sqlserver-mcp .`
+    # On Windows use a full path with .exe, e.g. C:\tools\sqlserver-mcp.exe
+    command: /usr/local/bin/sqlserver-mcp
+    args:
+      - --read-only # drop this line to allow writes
+      # Every result is read into the model's context window, so it is capped
+      # three ways by default: 200 rows, 256 KiB of data, and 4 KiB per value.
+      # Uncomment to change one; 0 turns that limit off entirely.
+      # - --max-rows=500
+      # - --max-bytes=524288
+      # - --max-cell-bytes=8192
+      - --query-timeout=30s
+      # Optional. A YAML file of extra tools, each a named parameterized query
+      # with its own output format (csv, md, or scalar). YAML so the SQL can be
+      # pasted in as a `|` block scalar. See the "Custom query tools" section of
+      # the README, and query-tools.example.yaml in the repo.
+      # - --query-tools=/etc/sqlserver-mcp/sales-tools.yaml
+      # Add --query-tools-only to drop the built-in sales_query and metadata
+      # tools and expose ONLY the tools from the file above. Needs --query-tools,
+      # and makes --tool-prefix below optional (nothing is left for it to name).
+      # - --query-tools-only
+      # REQUIRED (unless --query-tools-only). Names every built-in tool this
+      # server exposes: sales_query. Without it the server refuses to start, and
+      # the error suggests a prefix parsed from the connection string. Keep it
+      # short — some clients namespace tool names again on top
+      # (mcp__sales__sales_query).
+      - --tool-prefix=sales
+      # REQUIRED. URL form here; the ADO form works too:
+      #   --conn-string=server=sqlhost,1433;user id=reporting_user;password=CHANGE_ME;database=AdventureWorks;encrypt=true
+      # Windows integrated auth (Windows host only):
+      #   --conn-string=server=localhost;database=AdventureWorks;trusted_connection=yes
+      #
+      # Note this puts the password in the process's arguments, where `ps` can
+      # read it. Use a dedicated read-only login, not an account that matters.
+      - "--conn-string=sqlserver://reporting_user:CHANGE_ME@sqlhost:1433?database=AdventureWorks&encrypt=true&TrustServerCertificate=true"
+      # What the model reads when it decides which of these servers to call.
+      # This is the stronger of the two signals: the prefix stops the names
+      # colliding, but the description is what routes the question to the right
+      # database. Drop the line and the default names the database on its own.
+      - >-
+        --query-fn-desc=Query the AdventureWorks sales database on sqlhost
+        with a single T-SQL statement and get the result set back as JSON.
+        Use it for questions about orders, customers, products and inventory.
+        Pass one statement per call; only the query argument is required.
+    connectionTimeout: 20000
+
+  # A second database is a second block, not a second argument to the first.
+  - name: HR warehouse
+    type: stdio
+    command: /usr/local/bin/sqlserver-mcp
+    args:
+      - --read-only
+      - --query-timeout=30s
+      - --tool-prefix=hr # gives hr_query, disjoint from sales_query
+      - "--conn-string=sqlserver://reporting_user:CHANGE_ME@sqlhost:1433?database=HRWarehouse&encrypt=true&TrustServerCertificate=true"
+      - >-
+        --query-fn-desc=Query the HR warehouse on sqlhost with a single
+        T-SQL statement. Use it for questions about employees, departments,
+        headcount and payroll.
+    connectionTimeout: 20000
