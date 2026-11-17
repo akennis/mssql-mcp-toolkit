@@ -770,6 +770,8 @@ func TestParseHandleRefPositions(t *testing.T) {
 		{"qx4.PersonID[x]", "qx4", "PersonID[x", "", true},
 		{"qx4[x].PersonID", "", "", "", false},
 		{"qx4.", "qx4", "", "", true},
+		{"bd4.Row.11.GradeID", "bd4", "GradeID", "11", true},
+		{"@qx4.row.-1.PersonID", "qx4", "PersonID", "-1", true},
 		{"AML2-AH", "", "", "", false},
 	} {
 		ref, _, ok := parseHandleRef(c.in)

@@ -60,6 +60,16 @@ func TestWrongIDColumnNamesTheKind(t *testing.T) {
 	}
 }
 
+func TestMalformedColumnIsNotBlamedOnTool(t *testing.T) {
+	cs, _ := handleClient(t, handleTools, nil)
+	people := handleOf(t, callQueryTool(t, cs, "roster", nil))
+	res := callQueryTool(t, cs, "echo", map[string]any{"PersonID": "@" + people + ".Nope.Col"})
+	text := contentText(res)
+	if !res.IsError || !strings.Contains(text, "misspelled or malformed") || strings.Contains(text, "may not be the right one") {
+		t.Errorf("unknown column:\n%s", text)
+	}
+}
+
 func TestRestoreBits(t *testing.T) {
 	r := &storedResult{
 		Columns: []string{"n", "flag"},

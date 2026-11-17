@@ -166,9 +166,19 @@ func parseHandleRef(s string) (ref handleRef, at, ok bool) {
 		}
 		col = strings.TrimSpace(col)
 		col = strings.TrimSuffix(strings.TrimPrefix(col, "["), "]")
+		// h1.Row.11.Col is the table's Row column read as a position: h1.Col[11].
+		if rm := rowColumnPattern.FindStringSubmatch(col); rm != nil && sel == nil {
+			if rsel, isSel := parseRowSel(rm[1]); isSel {
+				sel, col = rsel, rm[2]
+			}
+		}
 	}
 	return handleRef{id: strings.ToLower(m[2]), column: col, sel: sel}, m[1] == "@", true
 }
+
+// rowColumnPattern finds Row.<n>.<Column>, how a model reads a table's Row
+// column back into a handle reference.
+var rowColumnPattern = regexp.MustCompile(`^(?i:row)\.(-?\d+)\.(.+)$`)
 
 // rowSel is a Python-style pick of rows by position: one index (h1.Col[0],
 // h1.Col[-1]) or a slice (h1.Col[2:5], [:3], [-3:], [::2]). Positions count
@@ -455,7 +465,9 @@ func filterToolCallName(cfg *config) string {
 func errWrongIDColumn(cfg *config, spec *queryToolSpec, p queryToolParam, given string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "parameter %q is filled from the %s column of a result", p.Name, p.idColumn())
-	if given = strings.TrimSpace(given); given != "" {
+	if given = strings.TrimSpace(given); given != "" && !anyToolReturns(cfg, given) {
+		fmt.Fprintf(&b, "; %q is not a column any tool returns, so the reference is misspelled or malformed: write handle.Column, with a row position in brackets after the column to take one row (qx4.%s[0])", given, p.idColumn())
+	} else if given != "" {
 		fmt.Fprintf(&b, "; the %s column you passed is a different kind of id", given)
 		var owners []string
 		for _, q := range spec.Parameters {
@@ -470,6 +482,16 @@ func errWrongIDColumn(cfg *config, spec *queryToolSpec, p queryToolParam, given 
 		}
 	}
 	return fmt.Errorf("%s. %s", b.String(), recoveryClause(cfg, spec, p))
+}
+
+// anyToolReturns reports whether some tool returns a column of that name.
+func anyToolReturns(cfg *config, col string) bool {
+	for _, s := range cfg.queryTools {
+		if returnsColumn(s, col) {
+			return true
+		}
+	}
+	return false
 }
 
 // maxSourcesListed caps the tools a refusal names. An id that dozens of tools
